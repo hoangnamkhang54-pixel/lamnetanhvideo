@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>Làm nét ảnh / video</title>
+<style>
+  :root{
+    --bg: #0a0b0d;
+    --surface: #14161a;
+    --surface-2: #1c1f24;
+    --line: #262a31;
+    --text: #f2f4f3;
+    --muted: #8b93a1;
+    --accent: #5ef2c0;
+    --accent-dim: #2b6e5c;
+    --warn: #ff6a3d;
+    --radius: 18px;
+  }
+  *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html,body{
+    margin:0; padding:0; background:var(--bg); color:var(--text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height:100dvh;
+  }
+  body{
+    padding: max(20px, env(safe-area-inset-top)) 16px max(28px, env(safe-area-inset-bottom));
+    display:flex; flex-direction:column; gap:18px; max-width: 560px; margin:0 auto;
+  }
+
+  /* ---- Header : aperture mark + title ---- */
+  header{ display:flex; align-items:center; gap:12px; padding: 6px 2px 2px; }
+  .aperture{ width:34px; height:34px; flex:0 0 auto; }
+  .aperture .blade{ transform-origin:50% 50%; animation: iris 4s ease-in-out infinite; }
+  .aperture .blade:nth-child(2){ animation-delay:.08s; }
+  .aperture .blade:nth-child(3){ animation-delay:.16s; }
+  .aperture .blade:nth-child(4){ animation-delay:.24s; }
+  .aperture .blade:nth-child(5){ animation-delay:.32s; }
+  .aperture .blade:nth-child(6){ animation-delay:.4s; }
+  @keyframes iris{
+    0%,100%{ opacity:.55; }
+    50%{ opacity:1; }
+  }
+  h1{
+    font-size: 21px; letter-spacing:-.01em; font-weight: 700; margin:0;
+    font-family: 'Space Grotesk','Inter',sans-serif;
+  }
+  h1 span{ color: var(--accent); }
+  .sub{ margin:0; font-size:12.5px; color:var(--muted); }
+
+  /* ---- Upload zone ---- */
+  #dropzone{
+    background: var(--surface);
+    border: 1.5px dashed var(--line);
+    border-radius: var(--radius);
+    min-height: 220px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:10px; padding: 24px 18px; text-align:center;
+    transition: border-color .2s, background .2s;
+    position:relative; overflow:hidden;
+  }
+  #dropzone.drag{ border-color: var(--accent); background: var(--surface-2); }
+  #dropzone.has-media{ padding:10px; min-height:auto; }
+  #dropzone .hint-icon{ width:38px; height:38px; opacity:.75; }
+  #dropzone .hint-title{ font-weight:600; font-size:14.5px; }
+  #dropzone .hint-sub{ font-size:12px; color:var(--muted); line-height:1.5; }
+  #fileInput{ display:none; }
+  #preview-wrap{ display:none; width:100%; }
+  #preview-wrap.show{ display:block; }
+  #preview-wrap img, #preview-wrap video{
+    width:100%; max-height:340px; object-fit:contain; border-radius:12px; display:block; background:#000;
+  }
+  .media-bar{ display:flex; justify-content:space-between; align-items:center; padding:8px 4px 2px; font-size:12px; color:var(--muted); }
+  .media-bar button{
+    background:none; border:none; color:var(--warn); font-size:12px; font-weight:600; cursor:pointer; padding:4px 8px;
+  }
+
+  /* ---- Result area (appears under upload, holds progress/log + final result) ---- */
+  #result-area{ display:none; flex-direction:column; gap:10px; }
+  #result-area.show{ display:flex; }
+  .panel{
+    background: var(--surface); border-radius: var(--radius); padding:16px; border:1px solid var(--line);
+  }
+  .panel-title{ font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .dot{ width:7px; height:7px; border-radius:50%; background:var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{opacity:.35} 50%{opacity:1} }
+  .progress-track{ height:8px; border-radius:6px; background:var(--surface-2); overflow:hidden; }
+  .progress-fill{ height:100%; width:0%; background: linear-gradient(90deg,var(--accent-dim),var(--accent)); border-radius:6px; transition: width .6s ease; }
+  .progress-pct{ font-size:11px; color:var(--muted); margin-top:6px; text-align:right; }
+  #log{
+    margin-top:12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size:11.5px; color:var(--muted); background:var(--bg); border-radius:10px; padding:10px 12px;
+    max-height:120px; overflow-y:auto; display:flex; flex-direction:column; gap:4px;
+  }
+  #log .line span{ color:var(--accent); }
+  #result-final{ display:none; flex-direction:column; gap:12px; }
+  #result-final.show{ display:flex; }
+  #result-final img, #result-final video{ width:100%; border-radius:12px; background:#000; }
+  .dl-btn{
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    background: var(--accent); color:#06110c; font-weight:700; font-size:14.5px;
+    border:none; border-radius:14px; padding:14px; cursor:pointer; text-decoration:none;
+  }
+  .format-note{ font-size:11px; color:var(--muted); text-align:center; }
+
+  /* ---- Controls: resolution row + action row ---- */
+  .controls{ display:flex; flex-direction:column; gap:10px; }
+  .row{
+    display:flex; gap:10px;
+  }
+  .row.two-col > *{ flex:1; }
+
+  .seg{
+    display:flex; background:var(--surface); border-radius:14px; padding:4px; border:1px solid var(--line);
+  }
+  .seg button{
+    flex:1; background:none; border:none; color:var(--muted); font-size:13px; font-weight:600;
+    padding:10px 4px; border-radius:10px; cursor:pointer; transition: background .2s, color .2s;
+  }
+  .seg button.active{ background: var(--accent); color:#06110c; }
+
+  .action-box{
+    background:var(--surface); border-radius:14px; border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; padding:6px;
+  }
+  #sharpenBtn{
+    width:100%; border:none; border-radius:12px; padding:14px 10px;
+    background: linear-gradient(135deg, var(--accent), #2fd6b0);
+    color:#06110c; font-weight:800; font-size:13.5px; letter-spacing:-.01em;
+    cursor:pointer; position:relative;
+    animation: nudge 3.6s ease-in-out infinite;
+  }
+  #sharpenBtn:disabled{ opacity:.55; animation:none; cursor:not-allowed; }
+  @keyframes nudge{
+    0%, 88%, 100% { transform: translateX(0) rotate(0); }
+    90% { transform: translateX(-3px) rotate(-1.2deg); }
+    92% { transform: translateX(3px) rotate(1.2deg); }
+    94% { transform: translateX(-2px) rotate(-.6deg); }
+    96% { transform: translateX(2px) rotate(.6deg); }
+    98% { transform: translateX(0) rotate(0); }
+  }
+  @media (prefers-reduced-motion: reduce){
+    #sharpenBtn{ animation:none; }
+    .aperture .blade{ animation:none; }
+  }
+
+  footer{ text-align:center; font-size:11px; color:#555b66; padding-top:8px; }
+</style>
+</head>
+<body>
+
+  <header>
+    <svg class="aperture" viewBox="0 0 100 100">
+      <g fill="none" stroke="#5ef2c0" stroke-width="6" stroke-linecap="round">
+        <path class="blade" d="M50 10 L65 40 L50 50 Z" fill="#5ef2c0" stroke="none"/>
+        <path class="blade" d="M88 32 L60 42 L57 25 Z" fill="#5ef2c0" stroke="none"/>
+        <path class="blade" d="M80 78 L55 58 L70 47 Z" fill="#5ef2c0" stroke="none"/>
+        <path class="blade" d="M22 85 L40 58 L52 68 Z" fill="#5ef2c0" stroke="none"/>
+        <path class="blade" d="M8 45 L38 50 L33 65 Z" fill="#5ef2c0" stroke="none"/>
+        <path class="blade" d="M20 15 L45 30 L32 42 Z" fill="#5ef2c0" stroke="none"/>
+      </g>
+    </svg>
+    <div>
+      <h1>Làm nét <span>ảnh / video</span></h1>
+      <p class="sub">AI phục hồi chi tiết &amp; nâng độ phân giải</p>
+    </div>
+  </header>
+
+  <div id="dropzone">
+    <input type="file" id="fileInput" accept="image/*,video/*" />
+    <svg class="hint-icon" viewBox="0 0 24 24" fill="none" stroke="#5ef2c0" stroke-width="1.6">
+      <path d="M12 16V4M12 4l-5 5M12 4l5 5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="hint-title">Chạm để chọn ảnh hoặc video</div>
+    <div class="hint-sub">Không giới hạn dung lượng · JPG · PNG · HEIC · MP4 · MOV</div>
+
+    <div id="preview-wrap">
+      <img id="previewImg" style="display:none" />
+      <video id="previewVid" style="display:none" controls playsinline></video>
+      <div class="media-bar">
+        <span id="fileMeta">—</span>
+        <button id="removeBtn" type="button">Xoá</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="row two-col">
+      <div class="seg" id="resSeg">
+        <button data-res="1080p" class="active">1080p</button>
+        <button data-res="2k">2K</button>
+        <button data-res="4k">4K</button>
+        <button data-res="8k">8K</button>
+      </div>
+      <div class="action-box">
+        <button id="sharpenBtn">Làm nét ảnh ngay</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="result-area">
+    <div class="panel" id="progressPanel">
+      <div class="panel-title"><span class="dot"></span> Đang xử lý</div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-pct" id="progressPct">0%</div>
+      <div id="log"></div>
+    </div>
+
+    <div class="panel" id="result-final">
+      <div class="panel-title">Hoàn tất</div>
+      <div id="resultMediaWrap"></div>
+      <a class="dl-btn" id="downloadBtn" href="#" download>
+        ⬇ Tải xuống (chất lượng gốc, không nén mờ)
+      </a>
+      <div class="format-note" id="formatNote">Ảnh xuất PNG lossless · Video xuất MP4 H.264 chất lượng cao, đã ổn định khung hình kiểu gimbal</div>
+    </div>
+  </div>
+
+  <footer>Xử lý trên GPU đám mây · Modal (NVIDIA T4)</footer>
+
+<script>
+/* =========================================================
+   CẤU HÌNH — đổi URL này thành endpoint Modal của bạn sau khi `modal deploy`
+   ========================================================= */
+const API_BASE = "https://hoangnamkhang54--sharpen-api-web.modal.run";
+/* ========================================================= */
+
+const dropzone   = document.getElementById('dropzone');
+const fileInput  = document.getElementById('fileInput');
+const previewWrap= document.getElementById('preview-wrap');
+const previewImg = document.getElementById('previewImg');
+const previewVid = document.getElementById('previewVid');
+const fileMeta   = document.getElementById('fileMeta');
+const removeBtn  = document.getElementById('removeBtn');
+const resSeg     = document.getElementById('resSeg');
+const sharpenBtn = document.getElementById('sharpenBtn');
+const resultArea = document.getElementById('result-area');
+const progressPanel = document.getElementById('progressPanel');
+const progressFill  = document.getElementById('progressFill');
+const progressPct   = document.getElementById('progressPct');
+const logEl      = document.getElementById('log');
+const resultFinal   = document.getElementById('result-final');
+const resultMediaWrap = document.getElementById('resultMediaWrap');
+const downloadBtn = document.getElementById('downloadBtn');
+const formatNote = document.getElementById('formatNote');
+
+let selectedFile = null;
+let selectedRes = '1080p';
+let isVideo = false;
+let pollTimer = null;
+
+// ---- Chọn độ phân giải ----
+resSeg.addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if(!btn) return;
+  [...resSeg.children].forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  selectedRes = btn.dataset.res;
+});
+
+// ---- Chọn file ----
+dropzone.addEventListener('click', (e) => {
+  if(e.target.closest('#removeBtn')) return;
+  fileInput.click();
+});
+fileInput.addEventListener('change', () => {
+  if(fileInput.files && fileInput.files[0]) setFile(fileInput.files[0]);
+});
+['dragover','dragenter'].forEach(evt => dropzone.addEventListener(evt, e=>{
+  e.preventDefault(); dropzone.classList.add('drag');
+}));
+['dragleave','drop'].forEach(evt => dropzone.addEventListener(evt, e=>{
+  e.preventDefault(); dropzone.classList.remove('drag');
+}));
+dropzone.addEventListener('drop', e => {
+  const f = e.dataTransfer.files?.[0];
+  if(f) setFile(f);
+});
+removeBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  clearFile();
+});
+
+function setFile(file){
+  selectedFile = file;
+  isVideo = file.type.startsWith('video/');
+  const url = URL.createObjectURL(file);
+  dropzone.classList.add('has-media');
+  previewWrap.classList.add('show');
+  if(isVideo){
+    previewVid.src = url; previewVid.style.display='block';
+    previewImg.style.display='none';
+  } else {
+    previewImg.src = url; previewImg.style.display='block';
+    previewVid.style.display='none';
+  }
+  fileMeta.textContent = `${file.name} · ${(file.size/1024/1024).toFixed(1)} MB`;
+  resultArea.classList.remove('show');
+  resultFinal.classList.remove('show');
+}
+
+function clearFile(){
+  selectedFile = null;
+  dropzone.classList.remove('has-media');
+  previewWrap.classList.remove('show');
+  fileInput.value = '';
+  resultArea.classList.remove('show');
+  resultFinal.classList.remove('show');
+  if(pollTimer) clearInterval(pollTimer);
+}
+
+// ---- Nút "Làm nét ảnh ngay" ----
+sharpenBtn.addEventListener('click', async () => {
+  if(!selectedFile){
+    dropzone.scrollIntoView({behavior:'smooth', block:'center'});
+    dropzone.classList.add('drag');
+    setTimeout(()=>dropzone.classList.remove('drag'), 600);
+    return;
+  }
+  // Luôn kéo người dùng lên chỗ nhập ảnh khi bắt đầu xử lý
+  dropzone.scrollIntoView({behavior:'smooth', block:'start'});
+  startProcessing();
+});
+
+function addLog(text){
+  const line = document.createElement('div');
+  line.className = 'line';
+  const t = new Date().toLocaleTimeString('vi-VN', {hour12:false});
+  line.innerHTML = `<span>[${t}]</span> ${text}`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setProgress(pct){
+  progressFill.style.width = pct + '%';
+  progressPct.textContent = pct + '%';
+}
+
+async function startProcessing(){
+  sharpenBtn.disabled = true;
+  resultArea.classList.add('show');
+  resultFinal.classList.remove('show');
+  progressPanel.style.display = 'block';
+  logEl.innerHTML = '';
+  setProgress(0);
+  addLog('Đang tải ảnh lên máy chủ...');
+
+  try{
+    const form = new FormData();
+    form.append('file', selectedFile);
+    form.append('resolution', selectedRes);
+    form.append('is_video', isVideo ? '1':'0');
+
+    const uploadRes = await fetch(`${API_BASE}/submit`, { method:'POST', body: form });
+    if(!uploadRes.ok) throw new Error('Upload thất bại');
+    const { job_id } = await uploadRes.json();
+
+    addLog('Đã tải ảnh lên. Đang đưa vào hàng đợi xử lý...');
+    setProgress(20);
+
+    pollTimer = setInterval(() => pollStatus(job_id), 5000);
+    pollStatus(job_id); // gọi ngay lần đầu
+  } catch(err){
+    addLog(`Lỗi: ${err.message}`);
+    sharpenBtn.disabled = false;
+  }
+}
+
+async function pollStatus(jobId){
+  try{
+    const r = await fetch(`${API_BASE}/status/${jobId}`);
+    const data = await r.json();
+
+    if(data.status === 'uploading'){
+      addLog('Đang tải ảnh lên...');
+      setProgress(Math.max(20, data.progress || 25));
+    } else if(data.status === 'processing'){
+      addLog(`Đang xử lý... (${data.step || 'AI đang phục hồi chi tiết'})`);
+      setProgress(Math.min(90, data.progress || 60));
+    } else if(data.status === 'stabilizing'){
+      addLog('Đang ổn định video (chống rung kiểu gimbal)...');
+      setProgress(92);
+    } else if(data.status === 'done'){
+      addLog('Xử lý hoàn tất.');
+      setProgress(100);
+      clearInterval(pollTimer);
+      showResult(data);
+    } else if(data.status === 'error'){
+      addLog(`Lỗi xử lý: ${data.message || 'không xác định'}`);
+      clearInterval(pollTimer);
+      sharpenBtn.disabled = false;
+    }
+  } catch(err){
+    addLog('Không kết nối được máy chủ, thử lại...');
+  }
+}
+
+function showResult(data){
+  resultMediaWrap.innerHTML = '';
+  if(isVideo){
+    const v = document.createElement('video');
+    v.src = data.result_url; v.controls = true; v.playsInline = true;
+    resultMediaWrap.appendChild(v);
+    formatNote.textContent = 'Video MP4 (H.264, chất lượng cao) · đã chống rung theo khung hình mượt kiểu gimbal';
+  } else {
+    const img = document.createElement('img');
+    img.src = data.result_url;
+    resultMediaWrap.appendChild(img);
+    formatNote.textContent = 'Ảnh xuất định dạng PNG lossless — không bị nén ép mờ lại';
+  }
+  downloadBtn.href = data.result_url;
+  downloadBtn.setAttribute('download', isVideo ? 'da-lam-net.mp4' : 'da-lam-net.png');
+  resultFinal.classList.add('show');
+  sharpenBtn.disabled = false;
+}
+</script>
+</body>
+</html>
